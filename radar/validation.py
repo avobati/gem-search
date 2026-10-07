@@ -7,17 +7,26 @@ from radar.engine import HORIZONS, primary
 
 def label_returns(store, now=None):
     now = time.time() if now is None else now
-    for decision in store.history('decisions', cutoff=now, limit=100000):
+    existing = {r['id'] for r in store.history('returns', cutoff=now, limit=1000000, fields=('decision_id',))}
+    histories = {}
+    for decision in store.history('decisions', cutoff=now, limit=100000, fields=('features','cutoff','run_id')):
         base = decision['features'].get('price')
         if not base or decision['features'].get('stale'):
             continue
-        history = store.history('observations', decision['mint'], now, limit=100000)
+        pending = [(h,s) for h,s in HORIZONS.items() if decision['id']+':'+h not in existing
+                   and now >= decision['cutoff']+s+max(300,min(1800,s*.05))]
+        if not pending:
+            continue
+        if decision['mint'] not in histories:
+            histories[decision['mint']] = store.history('observations', decision['mint'], now, limit=100000,
+                                                       fields=('price','pool','provider','liquidity'))
+        history = histories[decision['mint']]
         # Follow the same pool/provider as the decision to avoid switching artifacts.
         f = decision['features']
         observations = sorted([r for r in history if r['available_at'] >= decision['cutoff']
                                and r.get('price') and r.get('pool') == f.get('pool')
                                and r.get('provider') == f.get('source')], key=lambda r:r['available_at'])
-        for horizon, seconds in HORIZONS.items():
+        for horizon, seconds in pending:
             target = decision['cutoff'] + seconds
             tolerance = max(300, min(1800, seconds*.05))
             if now < target+tolerance:
@@ -51,7 +60,8 @@ def metrics(decisions, labels, method, horizon, threshold, top=20):
     winners = [d for d in mature if labels[d['id']]['return_pct'] >= threshold]
     # Gem is risk-gated, baselines expose their selected risk as well.
     selected_all = [d for d in decisions if d['ranks'][method] <= top and (method!='gem' or d['score']['candidate'])]
-    selected = [d for d in selected_all if d in mature]
+    mature_ids = {d['id'] for d in mature}
+    selected = [d for d in selected_all if d['id'] in mature_ids]
     values = [labels[d['id']]['return_pct'] for d in selected]
     hits = sum(labels[d['id']]['return_pct'] >= threshold for d in selected)
     false_positives = len(selected)-hits
@@ -71,7 +81,7 @@ def metrics(decisions, labels, method, horizon, threshold, top=20):
 
 
 def report(store):
-    decisions = store.history('decisions', limit=100000)
+    decisions = store.history('decisions', limit=100000, fields=('ranks','score'))
     labels = store.history('returns', limit=100000)
     rows = []
     for horizon in ('6h','12h','24h','3d','7d'):
@@ -109,6 +119,9 @@ def evaluate_walk_forward(store, periods, weight_options, horizon='24h', thresho
     are read only after weights are selected using training and validation.
     """
     from radar.engine import score_token
+    if not periods:
+        return {'folds':[], 'horizon':horizon, 'threshold':threshold, 'production_weights_changed':False,
+                'caveat':'No mature chronological folds yet'}
     decisions=store.history('decisions',limit=100000)
     labels={r['decision_id']:r for r in store.history('returns',limit=100000)
             if r['horizon']==horizon and r['status']=='observed'}

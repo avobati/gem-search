@@ -5,7 +5,7 @@ import math
 import re
 from radar.providers import number
 
-VERSION = 'gem-v1.0-research'
+VERSION = 'gem-v1.1-onchain'
 WEIGHTS = {'momentum': 25, 'liquidity': 15, 'wallets': 15, 'distribution': 10,
            'narrative': 10, 'project': 10, 'structure': 10, 'risk': 5}
 WINDOWS = {'5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '3h': 10800,
@@ -82,11 +82,19 @@ def features(history, cutoff):
 
 def risk_assessment(f, evidence, cutoff):
     raw = evidence.get('raw') if evidence else None
-    stale = not evidence or cutoff-evidence.get('observed_at', 0) > 3600
-    token = raw.get('token') or {} if raw else {}
+    stale = not evidence or not 0 <= cutoff-evidence.get('observed_at', 0) <= 3600
+    token = dict(raw.get('token') or {}) if raw and not stale else {}
+    chain = (evidence or {}).get('onchain') or {}
+    chain_fresh = bool(chain.get('observed_at')) and 0 <= cutoff-chain['observed_at'] <= 3600
+    if chain_fresh:
+        for field in ('mintAuthority','freezeAuthority'):
+            if field in chain.get('token', {}):
+                # Any active authority wins over an incompatible null report.
+                if chain['token'][field] is not None or field not in token:
+                    token[field] = chain['token'][field]
     reasons, unknowns, score = [], [], 0
     for field, points in [('mintAuthority', 25), ('freezeAuthority', 35)]:
-        if field not in token or stale:
+        if field not in token:
             unknowns.append(field)
         elif token[field] is not None:
             score += points; reasons.append(field + ' remains active')
@@ -95,11 +103,16 @@ def risk_assessment(f, evidence, cutoff):
         values = [number(h.get('pct')) for h in raw['topHolders'][:10]]
         if all(v is not None for v in values):
             top = sum(values)
-            # Token accounts can include pools; owner attribution remains unverified.
-            if top >= 70:
-                score += 35; reasons.append(f'Top ten reported accounts hold {top:.1f}% (pool attribution unverified)')
-            elif top >= 40:
-                score += 20; reasons.append(f'Top ten reported accounts hold {top:.1f}%')
+    if chain_fresh and number(chain.get('top_10_pct')) is not None:
+        chain_top = number(chain['top_10_pct'])
+        if top is not None and abs(top-chain_top) > 10:
+            reasons.append('Concentration sources differ by more than ten percentage points')
+        top = max(top if top is not None else 0, chain_top)
+    # Token accounts can include pools; owner attribution remains unverified.
+    if top is not None and top >= 70:
+        score += 35; reasons.append(f'Top ten reported accounts hold {top:.1f}% (pool attribution unverified)')
+    elif top is not None and top >= 40:
+        score += 20; reasons.append(f'Top ten reported accounts hold {top:.1f}%')
     if top is None:
         unknowns.append('top_10_concentration')
     liquidity = f.get('liquidity')
@@ -117,17 +130,29 @@ def risk_assessment(f, evidence, cutoff):
             severe = True; score += 20; reasons.append('Provider danger: ' + str(item.get('name', 'Unspecified'))[:150])
     if f.get('price_disagreement') is not None and f['price_disagreement'] > .3:
         score += 20; reasons.append('Liquid markets disagree on price by more than 30%')
+    chain_reject = False
+    if chain_fresh:
+        # Token-2022 extensions can affect transfers; an unreviewed extension
+        # remains a hold even when an aggregator reports low risk.
+        if chain.get('token_2022'):
+            unknowns.append('Token-2022 transfer semantics')
+            extensions = {str(x.get('extension','')).lower() for x in chain.get('extensions', []) if isinstance(x, dict)}
+            if extensions & {'nontransferable','transferhook','permanentdelegate','confidentialtransfermint'}:
+                chain_reject = True
+                score += 60
+                reasons.append('Token-2022 transfer restriction or privileged extension')
     unknowns += ['creator_cluster', 'bundled_wallets', 'LP_lock', 'sell_restrictions', 'creator_history']
     score = min(100, score)
     level = 'EXTREME' if score >= 90 else 'HIGH' if score >= 60 else 'MEDIUM' if score >= 30 else 'LOW'
-    complete_gate = all(x not in unknowns for x in ('mintAuthority', 'freezeAuthority', 'top_10_concentration', 'liquidity'))
-    hard_reject = bool(raw and raw.get('rugged')) or severe or token.get('freezeAuthority') is not None or score >= 60 or (liquidity is not None and liquidity < 10000)
+    complete_gate = all(x not in unknowns for x in ('mintAuthority', 'freezeAuthority', 'top_10_concentration', 'liquidity', 'Token-2022 transfer semantics'))
+    hard_reject = bool(raw and not stale and raw.get('rugged')) or chain_reject or severe or token.get('freezeAuthority') is not None or score >= 60 or (liquidity is not None and liquidity < 10000)
     return {'score': score, 'level': level if complete_gate else 'UNKNOWN', 'observed_level': level,
             'reasons': reasons, 'unknowns': unknowns, 'top_10_pct': top, 'stale': stale,
             'eligible': complete_gate and not hard_reject and not f.get('stale', True),
             'rejected': hard_reject, 'source_url': evidence.get('source_url') if evidence else None,
             'top_holders': (raw.get('topHolders') or [])[:10] if raw else [],
-            'mint_authority': token.get('mintAuthority'), 'freeze_authority': token.get('freezeAuthority')}
+            'mint_authority': token.get('mintAuthority'), 'freeze_authority': token.get('freezeAuthority'),
+            'onchain': chain if chain_fresh else None}
 
 
 def social_features(posts, mint, symbol, name, cutoff):

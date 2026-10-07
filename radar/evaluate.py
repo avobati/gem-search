@@ -13,7 +13,7 @@ def main():
     args=parser.parse_args()
     store=Store()
     result=report(store)
-    decisions=store.history('decisions',limit=100000)
+    decisions=store.history('decisions',limit=100000,fields=('cutoff',))
     periods=walk_forward_periods(min((r['cutoff'] for r in decisions),default=0),
                                  max((r['cutoff'] for r in decisions),default=0))
     options=[WEIGHTS,dict(WEIGHTS,momentum=30,liquidity=10),dict(WEIGHTS,momentum=20,project=15)]

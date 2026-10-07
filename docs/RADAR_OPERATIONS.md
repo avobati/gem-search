@@ -83,6 +83,27 @@ remains future research. Daily reports never change production weights.
 
 ## Acceptance status
 
+Optional independent RPC evidence (`RADAR_ONCHAIN_ENABLED=1`) reads finalized
+mint authority, freeze authority, token program/extensions and the twenty largest
+token accounts. It uses two calls per mint, at most two mints per ranking cycle,
+with a thirty-minute cache and five-minute outage cooldown. Slots and availability
+timestamps are frozen with decisions; calls are not an atomic snapshot. RPC keys
+and endpoint URLs are never included in browser evidence. Largest-account amounts
+are divided by raw integer mint supply; pool attribution and total holder count
+remain unknown. When concentration sources disagree, the larger observed top-ten
+percentage is used conservatively. Any fresh active freeze authority rejects.
+
+Unreviewed Token-2022 transfer semantics hold eligibility. Observed transfer hooks,
+nontransferable tokens, permanent delegates or confidential-transfer mints add
+60 risk points and reject. Other extensions remain a hold rather than receiving
+a safety assertion. This does not simulate a sell transaction. Missing independent
+RPC evidence does not manufacture observations or replace unavailable RugCheck
+fields. Rule version is `gem-v1.1-onchain`.
+
+RPC reference: [getAccountInfo](https://solana.com/docs/rpc/http/getaccountinfo),
+[largest token accounts](https://solana.com/docs/rpc/http/gettokenlargestaccounts),
+[extensions](https://solana.com/docs/tokens/extensions).
+
 Implemented: public multi-source discovery, historical observations, deterministic
 risk gate, explainable scores, immutable ranked cohorts, responsive research
 dossiers, crawler/capture/JEV integration, optional Grok adapter, forward labels,

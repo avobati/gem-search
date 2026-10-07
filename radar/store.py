@@ -86,17 +86,24 @@ class Store:
             return [dict(json.loads(r['payload']), mint=r['mint'], first_seen=r['first_seen'])
                     for r in db.execute('SELECT * FROM tokens ORDER BY first_seen DESC')]
 
-    def history(self, table, mint=None, cutoff=None, limit=10000):
+    def history(self, table, mint=None, cutoff=None, limit=10000, fields=None):
         if table not in TABLES:
             raise ValueError('Unknown entity')
         clauses, args = ['available_at<=?'], [time.time() if cutoff is None else cutoff]
         if mint is not None:
             clauses.append('mint=?'); args.append(mint)
         args.append(limit)
+        selection = '*'
+        if fields:
+            if any(not f.replace('_','').isalnum() for f in fields):
+                raise ValueError('Invalid projected field')
+            parts = ','.join(f"'{f}',payload::jsonb->'{f}'" if self.postgres else f"'{f}',json_extract(payload,'$.{f}')" for f in fields)
+            function = 'json_build_object' if self.postgres else 'json_object'
+            selection = f'id,mint,available_at,{function}({parts}) AS payload'
         with self.connect() as db:
-            rows = db.execute(f'SELECT * FROM {table} WHERE ' + ' AND '.join(clauses) +
+            rows = db.execute(f'SELECT {selection} FROM {table} WHERE ' + ' AND '.join(clauses) +
                               ' ORDER BY available_at DESC,id DESC LIMIT ?', args)
-            return [dict(json.loads(r['payload']), id=r['id'], mint=r['mint'], available_at=r['available_at']) for r in rows]
+            return [dict(r['payload'] if isinstance(r['payload'],dict) else json.loads(r['payload']), id=r['id'], mint=r['mint'], available_at=r['available_at']) for r in rows]
 
     def set_status(self, key, value, stamp=None):
         with self.connect() as db:

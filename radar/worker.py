@@ -23,6 +23,10 @@ class Worker:
         self.store = store
         self.providers = providers or Providers(Client(store))
         self.researcher = researcher or investigate
+        self.onchain = None
+        if os.getenv('RADAR_ONCHAIN_ENABLED', '0') == '1':
+            from radar.onchain import Onchain
+            self.onchain = Onchain(store)
         self.reviewer = None
         if os.getenv('GROK_ENABLED') == '1':
             import app
@@ -87,7 +91,7 @@ class Worker:
             return
         # All enrichment happens before a shared decision cutoff.
         rows = []
-        risk_budget, research_budget = 15, 10
+        risk_budget, research_budget, chain_budget = 15, 10, 2
         for token in self.store.tokens():
             mint = token['mint']
             history = self.store.history('observations', mint, limit=5000)
@@ -104,6 +108,12 @@ class Worker:
                     evidence = risk_cache or {'raw':None, 'observed_at':0, 'error':'Risk budget deferred'}
             else:
                 evidence = risk_cache
+            if self.onchain:
+                chain = self.store.status('onchain:' + mint).get('onchain:' + mint)
+                if chain_budget and (not chain or time.time()-chain['updated'] > 1800):
+                    chain = self.onchain.inspect(mint)
+                    chain_budget -= 1
+                evidence = dict(evidence, onchain=chain)
             previous = self.store.history('research', mint, limit=1)
             if previous and time.time()-previous[0]['available_at'] < 1800:
                 research = previous[0]
