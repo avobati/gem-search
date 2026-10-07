@@ -31,6 +31,7 @@ class Store:
             for table in TABLES:
                 db.execute(f'CREATE TABLE IF NOT EXISTS {table} (id TEXT PRIMARY KEY, mint TEXT NOT NULL, available_at DOUBLE PRECISION NOT NULL, payload TEXT NOT NULL)')
                 db.execute(f'CREATE INDEX IF NOT EXISTS {table}_mint_time ON {table}(mint,available_at)')
+                db.execute(f'CREATE INDEX IF NOT EXISTS {table}_time ON {table}(available_at,id)')
             db.execute('CREATE TABLE IF NOT EXISTS operational (key TEXT PRIMARY KEY, updated DOUBLE PRECISION NOT NULL, payload TEXT NOT NULL)')
             if self.postgres:
                 db.execute("""CREATE OR REPLACE FUNCTION radar_append_only() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -86,12 +87,17 @@ class Store:
             return [dict(json.loads(r['payload']), mint=r['mint'], first_seen=r['first_seen'])
                     for r in db.execute('SELECT * FROM tokens ORDER BY first_seen DESC')]
 
-    def history(self, table, mint=None, cutoff=None, limit=10000, fields=None):
+    def history(self, table, mint=None, cutoff=None, limit=10000, fields=None, run_id=None, since=None):
         if table not in TABLES:
             raise ValueError('Unknown entity')
         clauses, args = ['available_at<=?'], [time.time() if cutoff is None else cutoff]
         if mint is not None:
             clauses.append('mint=?'); args.append(mint)
+        if since is not None:
+            clauses.append('available_at>=?'); args.append(since)
+        if run_id is not None:
+            clauses.append("payload::jsonb->>'run_id'=?" if self.postgres else "json_extract(payload,'$.run_id')=?")
+            args.append(run_id)
         args.append(limit)
         selection = '*'
         if fields:

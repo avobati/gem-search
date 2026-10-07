@@ -53,6 +53,13 @@ class OnchainTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.history('decisions',fields=("score');drop",))
 
+    def test_current_cohort_query_excludes_previous_and_future_rows(self):
+        for stamp,run in ((1000,'old'),(1100,'current'),(1200,'future')):
+            self.store.append('decisions',MINT,{'run_id':run},stamp)
+        rows = self.store.history('decisions',cutoff=1150,since=1100,run_id='current')
+        self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0]['run_id'],'current')
+
     def test_largest_account_failure_preserves_authorities(self):
         def partial(method, params):
             return self.rpc(method,params) if method=='getAccountInfo' else {'error':{}}

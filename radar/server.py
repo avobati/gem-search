@@ -20,7 +20,10 @@ STATIC = Path(__file__).resolve().parents[1] / 'static' / 'radar'
 def current_rows(store):
     ranking = store.status('ranking').get('ranking', {})
     run_id = ranking.get('run_id')
-    rows = [r for r in store.history('decisions', limit=100000) if r.get('run_id') == run_id]
+    if not run_id:
+        return []
+    rows = store.history('decisions', limit=100000, run_id=run_id, since=ranking.get('cutoff'),
+                         fields=('features','risk','score','explanation','ranks','first_seen','cutoff','run_id','universe_size'))
     return sorted([{k:v for k,v in r.items() if k not in ('risk_evidence','research')} for r in rows], key=lambda r:r['ranks']['gem'])
 
 
