@@ -1,6 +1,7 @@
 """Hosted read-only radar. Never exposes the legacy launch or pairing API."""
 import argparse
 import base64
+from html import escape
 import json
 import os
 from pathlib import Path
@@ -64,7 +65,9 @@ def handler_for(store, credentials):
                 nonce = sessions.challenge()
                 if not nonce:
                     return self.send(429, {'error':'Please try again shortly'})
-                page = (STATIC/'login.html').read_text().replace('{{nonce}}',nonce)
+                query=parse_qs(urlsplit(self.path).query)
+                message='Sign-in failed. Check your dashboard password and try again.' if 'error' in query else 'Your sign-in expired. Please try again.' if 'expired' in query else ''
+                page = (STATIC/'login.html').read_text().replace('{{nonce}}',nonce).replace('{{username}}',escape(credentials.split(':',1)[0],quote=True)).replace('{{message}}',message)
                 return self.send(200,page.encode(),'text/html; charset=utf-8',
                                  {'Set-Cookie':self.cookie('radar_nonce',nonce,600)})
             if path == '/radar.css':
@@ -151,11 +154,13 @@ def handler_for(store, credentials):
                 fields = parse_qs(self.rfile.read(size).decode('utf-8'),max_num_fields=4)
                 nonce = fields.get('nonce',[''])[0]
                 if not secrets.compare_digest(nonce.encode(),jar.get('radar_nonce','').encode()):
-                    return self.send(403, {'error':'Login expired; reload the sign-in page'})
+                    return self.send(303,b'',headers={'Location':'/login?expired=1'})
                 supplied = fields.get('username',[''])[0]+':'+fields.get('password',[''])[0]
                 token, status = sessions.login(nonce,supplied,credentials)
                 if not token:
-                    return self.send(429 if status=='limited' else 401,{'error':'Sign-in failed; reload /login and try again'})
+                    if status=='limited':
+                        return self.send(429,{'error':'Too many sign-in attempts; try again in five minutes'})
+                    return self.send(303,b'',headers={'Location':'/login?error=1'})
                 return self.send(303,b'',headers={'Location':'/','Set-Cookie':self.cookie('radar_session',token,8*3600)})
             except (ValueError,UnicodeError):
                 return self.send(400, {'error':'Invalid login request'})

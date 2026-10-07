@@ -54,6 +54,27 @@ minutes and are single-use; POST login/logout require a same-origin request.
 Thirty failed sign-ins in five minutes temporarily stop sign-ins. Login cookies
 do not carry credentials. Basic Authorization remains available to API clients.
 
+## Logical evidence backups
+
+Run exports in the host container or a trusted environment with the database
+connection set through `RADAR_DATABASE_URL`:
+
+```sh
+python -m radar.backup export data/backups/radar-2026-10-08.jsonl
+python -m radar.backup validate data/backups/radar-2026-10-08.jsonl
+python -m radar.backup restore data/backups/radar-2026-10-08.jsonl --database data/restored.sqlite
+```
+
+Exports read one consistent database snapshot and stream rows rather than load
+all raw research into memory. The final manifest verifies SHA-256 and entity
+counts. Exports refuse to overwrite a file. Restore requires an empty evidence
+database, locks it for the import transaction, and preserves record IDs and
+timestamps. Operational caches and credentials are excluded; only the latest
+ranking pointer is reconstructed. Evidence remains append-only after restore.
+Keep backups on independent private storage: a file inside an ephemeral service
+container is not a durable off-host backup. Scheduled off-host backups and a
+real PostgreSQL recovery drill remain operational acceptance work.
+
 ## Methodology and limitations
 
 Default weights: momentum 25, liquidity 15, wallets 15, distribution 10,
