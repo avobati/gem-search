@@ -66,8 +66,16 @@ def metrics(decisions, labels, method, horizon, threshold, top=20):
     hits = sum(labels[d['id']]['return_pct'] >= threshold for d in selected)
     false_positives = len(selected)-hits
     negatives = len(mature)-len(winners)
+    missing = sum(d['id'] in labels and labels[d['id']]['status']=='missing' for d in selected_all)
+    settled = len(selected)+missing
+    stressed = values+[-100.0]*missing
     return {'method': method, 'horizon': horizon, 'threshold': threshold, 'top': top,
             'selected': len(selected_all), 'observed': len(selected), 'missing_or_unmatured': len(selected_all)-len(selected),
+            'settled_missing':missing, 'unmatured':len(selected_all)-settled,
+            'missing_exit_sensitivity':{'assumed_return_pct':-100,
+                'hit_rate':hits/settled if settled else None,
+                'median_return_pct':statistics.median(stressed) if stressed else None,
+                'note':'Conservative scenario for settled missing exits; unmeasured execution, not a realized loss'},
             'hit_rate': hits/len(selected) if selected else None,
             'precision': hits/len(selected) if selected else None,
             'recall_observed_universe': hits/len(winners) if winners else None,

@@ -19,16 +19,17 @@ budgets and cooldowns can delay collection. One-worker locks prevent overlap.
 | Variable | Purpose |
 |---|---|
 | RADAR_DATABASE_URL | PostgreSQL DSN in hosted deployments; SQLite path locally |
-| RADAR_USERNAME / RADAR_PASSWORD | HTTP Basic authentication behind hosting TLS; password >=20 characters |
+| RADAR_USERNAME / RADAR_PASSWORD | Private dashboard sign-in behind hosting TLS; password >=20 characters; explicit Basic API headers supported |
 | PORT | Host-provided listener port (local default 8790) |
 | RADAR_MARKETS_PER_CYCLE | Bounded mint enrichment budget, default 15 |
+| RADAR_ONCHAIN_ENABLED / RADAR_RPC_URL | Optional finalized RPC checks; RPC URL remains server-side |
 | GEM_CAPTURE_DATABASE | Optional original Spider SQLite database; captures require browser activity |
 | GROK_ENABLED / XAI_API_KEY / GROK_MODEL / GROK_DAILY_CALLS | Existing optional four-reviewer settings; keys remain server-side |
 | TELEGRAM_ALERTS_ENABLED / TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID | Optional configured research alerts; disabled by default |
 
 Deploy the Dockerfile on a persistent container host with a durable PostgreSQL
 database. Set secrets in the host dashboard, never a Git file. TLS termination
-is mandatory for hosted Basic authentication. Do not deploy `app.py` publicly.
+is mandatory for hosted authentication. Do not deploy `app.py` publicly.
 `/healthz` tests database liveness without exposing evidence. Authenticated
 `/api/health` checks a completed worker cycle and recent healthy provider.
 
@@ -36,6 +37,22 @@ Free-host trials do not establish permanent 24/7 availability. Check credit
 limits, egress, database expiry and idle suspension. Never use fake traffic to
 evade a host's free-service restrictions. Account/payment requirements can block
 deployment independently of application readiness.
+
+Railway trial deployment (2026-10-08): repository `avobati/gem-search`, branch
+`feat/solana-discovery`, Dockerfile builder/path `Dockerfile`, one replica,
+serverless disabled, health path `/healthz`, On Failure restart (ten retries).
+`RADAR_DATABASE_URL` references `${{Postgres.DATABASE_URL}}`; the Postgres service
+has its own persistent volume. Domain target is 8080, matching the injected PORT.
+New services cannot enable legacy `railway.json` config-as-code; these settings
+were applied through the dashboard. The checked-in file is a legacy example.
+See [Railway IaC documentation](https://docs.railway.com/infrastructure-as-code).
+
+Sign in at `/login`. Passwords remain in the host environment; opaque sessions
+last eight hours, use HttpOnly/SameSite=Strict/Secure cookies on public domains,
+and expire when the single replica restarts. Login challenges expire after ten
+minutes and are single-use; POST login/logout require a same-origin request.
+Thirty failed sign-ins in five minutes temporarily stop sign-ins. Login cookies
+do not carry credentials. Basic Authorization remains available to API clients.
 
 ## Methodology and limitations
 
@@ -72,6 +89,10 @@ post-target tolerance. Missing outcomes remain missing. Max/min returns and
 drawdown are sampled and may miss intrainterval extremes. Reports disclose
 outcome coverage. Repeated token/cohort observations are correlated; headline
 metrics are descriptive and cannot establish significance.
+Reports separately count settled missing exits and outcomes whose horizons have
+not matured. A conservative sensitivity scenario assigns -100% only to settled
+missing exits; it is an assumption rather than a measured loss or executable
+return. Unmatured outcomes are not classified as failures.
 
 Backtest, out-of-sample and forward results begin as unavailable/collecting;
 there is no preexisting token history. The validation module defines

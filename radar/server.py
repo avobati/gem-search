@@ -9,7 +9,8 @@ import signal
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
+from radar.auth import Sessions, cookies
 from automation import load_env
 from radar.store import Store
 from radar.validation import report
@@ -35,11 +36,12 @@ def public_health(store):
 
 
 def handler_for(store, credentials):
+    sessions = Sessions()
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
 
-        def send(self, status, payload, mime='application/json; charset=utf-8'):
+        def send(self, status, payload, mime='application/json; charset=utf-8', headers=None):
             if not isinstance(payload, bytes):
                 payload = json.dumps(payload, allow_nan=False).encode()
             self.send_response(status)
@@ -49,13 +51,24 @@ def handler_for(store, credentials):
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
             self.send_header('Referrer-Policy', 'no-referrer')
-            if status == 401:
-                self.send_header('WWW-Authenticate', 'Basic realm="Gem Radar", charset="UTF-8"')
+            for key,value in (headers or {}).items():
+                self.send_header(key,value)
             self.end_headers()
             self.wfile.write(payload)
 
         def do_GET(self):
             path = urlsplit(self.path).path
+            if path == '/login':
+                if not credentials:
+                    return self.send(302,b'',headers={'Location':'/'})
+                nonce = sessions.challenge()
+                if not nonce:
+                    return self.send(429, {'error':'Please try again shortly'})
+                page = (STATIC/'login.html').read_text().replace('{{nonce}}',nonce)
+                return self.send(200,page.encode(),'text/html; charset=utf-8',
+                                 {'Set-Cookie':self.cookie('radar_nonce',nonce,600)})
+            if path == '/radar.css':
+                return self.send(200,(STATIC/'radar.css').read_bytes(),'text/css; charset=utf-8')
             if path == '/healthz':
                 try:
                     store.status('worker')
@@ -63,7 +76,10 @@ def handler_for(store, credentials):
                 except Exception:
                     return self.send(503, {'status':'database_unavailable'})
             expected = 'Basic ' + base64.b64encode(credentials.encode()).decode()
-            if credentials and not secrets.compare_digest(self.headers.get('Authorization', ''), expected):
+            authenticated = sessions.valid(cookies(self.headers.get('Cookie')).get('radar_session'))
+            if credentials and not authenticated and not secrets.compare_digest(self.headers.get('Authorization', ''), expected):
+                if path == '/':
+                    return self.send(302,b'',headers={'Location':'/login'})
                 return self.send(401, {'error':'Authentication required'})
             try:
                 if path == '/api/radar':
@@ -109,8 +125,40 @@ def handler_for(store, credentials):
             except Exception:
                 return self.send(503, {'error':'Data temporarily unavailable'})
 
+        def cookie(self, name, value, age):
+            local = urlsplit('http://'+self.headers.get('Host','')).hostname in ('localhost','127.0.0.1')
+            return f'{name}={value}; Path=/; HttpOnly; SameSite=Strict; Max-Age={age}' + ('' if local else '; Secure')
+
+        def same_origin(self):
+            origin = urlsplit(self.headers.get('Origin',''))
+            local = origin.hostname in ('localhost','127.0.0.1')
+            return (origin.scheme=='https' or (local and origin.scheme=='http')) and origin.netloc==self.headers.get('Host')
+
         def do_POST(self):
-            self.send(405, {'error':'Read-only research service'})
+            path = urlsplit(self.path).path
+            if path not in ('/login','/logout'):
+                return self.send(405, {'error':'Read-only research service'})
+            if not self.same_origin():
+                return self.send(403, {'error':'Origin validation failed'})
+            jar = cookies(self.headers.get('Cookie'))
+            if path == '/logout':
+                sessions.logout(jar.get('radar_session'))
+                return self.send(303,b'',headers={'Location':'/login','Set-Cookie':self.cookie('radar_session','',0)})
+            try:
+                size = int(self.headers.get('Content-Length','0'))
+                if not 0 < size <= 4096 or self.headers.get('Content-Type','').split(';')[0]!='application/x-www-form-urlencoded':
+                    return self.send(400, {'error':'Invalid login request'})
+                fields = parse_qs(self.rfile.read(size).decode('utf-8'),max_num_fields=4)
+                nonce = fields.get('nonce',[''])[0]
+                if not secrets.compare_digest(nonce.encode(),jar.get('radar_nonce','').encode()):
+                    return self.send(403, {'error':'Login expired; reload the sign-in page'})
+                supplied = fields.get('username',[''])[0]+':'+fields.get('password',[''])[0]
+                token, status = sessions.login(nonce,supplied,credentials)
+                if not token:
+                    return self.send(429 if status=='limited' else 401,{'error':'Sign-in failed; reload /login and try again'})
+                return self.send(303,b'',headers={'Location':'/','Set-Cookie':self.cookie('radar_session',token,8*3600)})
+            except (ValueError,UnicodeError):
+                return self.send(400, {'error':'Invalid login request'})
     return Handler
 
 

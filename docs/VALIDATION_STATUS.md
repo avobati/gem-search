@@ -1,11 +1,11 @@
-# Validation status — 2026-10-07
+# Validation status — 2026-10-08
 
 This is a tested discovery/research foundation. The complete production mission
 has **not** met all acceptance criteria.
 
 ## Observed validation
 
-- 56 Python tests pass (existing workbench plus radar).
+- 68 Python tests pass (existing workbench plus radar).
 - 18 JavaScript tests pass; radar JavaScript syntax check passes.
 - Live first two collection cycles discovered 59 distinct mints: 36 first seen
   through GeckoTerminal new pools and 23 through DexScreener profiles.
@@ -19,18 +19,41 @@ has **not** met all acceptance criteria.
   Database triggers reject evidence mutation. Future-feature/capture exclusion,
   missing prices, liquidity removal, duplicate pools, provider disagreement,
   outage fallback and forward label idempotence are covered.
-- PostgreSQL adapter and container build are supplied but not exercised on a
-  running PostgreSQL/container host in this environment (Docker unavailable).
-- Production URL/health checks: **not available**. Railway browser account has
-  a limited $5 / 30-day trial and no connected repository. Browser GitHub account
-  `avobatistuta-ui` differs from repository/CLI account `avobati`. No GitHub App
-  installation or paid upgrade was authorized/performed.
+- Railway now connects to `avobati/gem-search`, branch `feat/solana-discovery`.
+  Docker build and deployment succeeded for commit `b013c78`. PostgreSQL and its
+  persistent volume are online. New services use dashboard configuration because
+  Railway's legacy config-as-code can no longer be enabled for new services.
+- Hosted endpoint: https://gem-search-production.up.railway.app. HTTPS `/healthz`
+  returns 200; protected endpoints return 401 without authentication. The domain
+  routes to port 8080, matching the container's injected PORT. The user entered
+  the private password directly in Railway; authenticated browser verification
+  remains pending.
+- A normal sign-in page replaces Chrome's blocked native Basic-authentication
+  prompt. Eight-hour opaque sessions use HttpOnly/SameSite=Strict/Secure cookies
+  on hosted domains, one-use login challenges and same-origin checks. Passwords
+  are never included in cookies or logs. Existing explicit Basic API headers
+  remain supported. Login/logout do not enable data or launch mutation.
+- Independent finalized RPC mint probe returned SPL token program and authority
+  evidence. Largest accounts were unavailable, explicitly preserved as missing.
+  Six behavioral RPC/security tests plus query projection/cohort tests cover
+  outages, partial evidence, conflicting authorities, Token-2022 holds and
+  future-data exclusion. On-chain enrichment is enabled on Railway, bounded to
+  two mints per ranking cycle. It does not establish wallet intelligence.
+- Baseline reports and latest-cohort queries project required fields rather than
+  loading historical raw research. Completed forward labels are not recalculated;
+  observations are fetched once per mint per labeling pass.
+- Account is a $5 / 30-day trial. No paid upgrade was performed; perpetual free
+  24/7 capacity and backup recovery have not been established.
 
 ## Measured performance
 
 Backtest: unavailable; no historical point-in-time token dataset supplied.
 Out-of-sample: unavailable; no mature independent folds yet.
-Forward testing: collecting; no mature return claims in this initial probe.
+Forward testing: collecting. The local export has 31,078 frozen decisions and
+10,040 horizon labels at its latest snapshot. No observed six-hour outcomes in
+the selected baseline cohorts were available; labels include missing exits.
+Repeated decisions are correlated, and these counts are not token counts or
+evidence of prediction accuracy. No live hosted return claims yet.
 Hit rate, median return and winner recall: **unknown**, not zero.
 
 `python -m radar.evaluate` exports current baseline metrics and walk-forward
@@ -40,8 +63,7 @@ and frozen before test evaluation. No experiment changes production weights.
 
 ## Remaining acceptance work
 
-1. Connect the correct hosting/GitHub identity, provision durable PostgreSQL,
-   build the container, deploy and pass live authenticated health checks.
+1. Complete authenticated hosted UI, worker readiness and durable-data checks.
 2. Confirm ongoing free-resource capacity; trial credit does not prove perpetual
    24/7 operation. Validate backups, workload, database sizes and provider budgets.
 3. Add transaction-level wallet/holder history and creator attribution. Current

@@ -60,6 +60,18 @@ class OnchainTests(unittest.TestCase):
         self.assertEqual(len(rows),1)
         self.assertEqual(rows[0]['run_id'],'current')
 
+    def test_missing_exit_sensitivity_excludes_unmatured_outcomes(self):
+        from radar.validation import metrics
+        decisions = [{'id':str(i),'ranks':{'gem':i+1},'score':{'candidate':True}} for i in range(3)]
+        labels = {'0':{'status':'observed','return_pct':120,'max_return_pct':130,'max_drawdown_pct':-10},
+                  '1':{'status':'missing'}}
+        result = metrics(decisions,labels,'gem','6h',100)
+        self.assertEqual(result['hit_rate'],1)
+        self.assertEqual(result['settled_missing'],1)
+        self.assertEqual(result['unmatured'],1)
+        self.assertEqual(result['missing_exit_sensitivity']['hit_rate'],.5)
+        self.assertEqual(result['missing_exit_sensitivity']['median_return_pct'],10)
+
     def test_largest_account_failure_preserves_authorities(self):
         def partial(method, params):
             return self.rpc(method,params) if method=='getAccountInfo' else {'error':{}}
