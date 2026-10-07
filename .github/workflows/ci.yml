@@ -19,6 +19,8 @@ jobs:
       - run: python3 tests/http_extension_smoke.py
       - run: python3 tests/http_bridge_smoke.py
       - run: npm test
+      - run: node --check static/radar/radar.js
+      - run: python3 -m compileall -q radar
       - run: python3 scripts/package_extension.py
       - uses: actions/upload-artifact@v4
         with:
