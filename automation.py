@@ -1,6 +1,9 @@
 """Durable, bounded launch queue. Default mode has no financial side effects."""
 import base64
-import fcntl
+try:
+    import fcntl
+except ImportError:  # The research backend also runs on Windows.
+    fcntl = None
 import hashlib
 import json
 import os
@@ -145,6 +148,12 @@ class Automation:
 
     def tick(self):
         if not self.enabled:
+            return
+        if fcntl is None:
+            from radar.lock import file_lock
+            with file_lock(self.data / 'launcher.lock') as acquired:
+                if acquired:
+                    self._tick()
             return
         # Cross-process mutex; OS releases it after crashes. Never two active signers.
         with open(self.data / 'launcher.lock', 'a') as lock:

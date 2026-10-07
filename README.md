@@ -14,6 +14,19 @@
 
 <br>
 
+## Solana Gem Radar
+
+An independent discovery and forward-research service now lives in `radar/`.
+It preserves the original Gem Search workbench and isolates discovery from all
+launch/signing paths. Run `python -m radar.worker --once`, then
+`python -m radar.server --with-worker` and open `http://127.0.0.1:8790`.
+
+See [architecture](docs/SOLANA_DISCOVERY_ARCHITECTURE.md) and
+[operations, scoring, risk and evidence limitations](docs/RADAR_OPERATIONS.md).
+PostgreSQL is supported for hosted storage. The Docker service requires private
+authentication credentials before public binding. Scores are uncalibrated
+research signals; predictive performance has not yet been established.
+
 <table>
 <tr>
 <td width="33%" valign="top"><h3>🌈 A companion, with character</h3>A spider walks through your feed, pauses on a post and shows what it is investigating. You can see the work happening.</td>
