@@ -30,6 +30,19 @@ class SessionTests(unittest.TestCase):
             self.assertIsNone(sessions.login(sessions.challenge(),'wrong','expected')[0])
         self.assertEqual(sessions.login(sessions.challenge(),'expected','expected')[1],'limited')
 
+    def test_hosted_session_survives_restart_and_password_change_revokes_it(self):
+        with tempfile.TemporaryDirectory() as temp:
+            store=Store(str(Path(temp)/'sessions.sqlite'))
+            first=Sessions(store,'name:private-password-test')
+            token,status=first.login(first.challenge(),'name:private-password-test','name:private-password-test')
+            self.assertEqual(status,'ok')
+            second=Sessions(store,'name:private-password-test')
+            self.assertTrue(second.valid(token))
+            self.assertFalse(Sessions(store,'name:new-password').valid(token))
+            self.assertNotIn(token,str(store.status()))
+            second.logout(token)
+            self.assertFalse(first.valid(token))
+
     def test_browser_login_origin_cookie_logout_and_read_only(self):
         with tempfile.TemporaryDirectory() as temp:
             store=Store(str(Path(temp)/'db.sqlite'))

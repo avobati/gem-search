@@ -5,7 +5,7 @@ has **not** met all acceptance criteria.
 
 ## Observed validation
 
-- 70 Python tests pass (existing workbench plus radar).
+- 71 Python tests pass (existing workbench plus radar).
 - 18 JavaScript tests pass; radar JavaScript syntax check passes.
 - Live first two collection cycles discovered 59 distinct mints: 36 first seen
   through GeckoTerminal new pools and 23 through DexScreener profiles.
@@ -21,7 +21,9 @@ has **not** met all acceptance criteria.
   outage fallback and forward label idempotence are covered.
 - Railway now connects to `avobati/gem-search`, branch `feat/solana-discovery`.
   Docker build and deployment succeeded for commit `b013c78`. PostgreSQL and its
-  persistent volume are online. New services use dashboard configuration because
+  persistent volume are online. Persisted decisions survived successive deployments;
+  the database explorer shows a recent completed worker heartbeat and healthy
+  DexScreener requests. New services use dashboard configuration because
   Railway's legacy config-as-code can no longer be enabled for new services.
 - Hosted endpoint: https://gem-search-production.up.railway.app. HTTPS `/healthz`
   returns 200; protected endpoints return 401 without authentication. The domain
@@ -32,11 +34,15 @@ has **not** met all acceptance criteria.
   prompt. Eight-hour opaque sessions use HttpOnly/SameSite=Strict/Secure cookies
   on hosted domains, one-use login challenges and same-origin checks. Passwords
   are never included in cookies or logs. Existing explicit Basic API headers
-  remain supported. Login/logout do not enable data or launch mutation.
+  remain supported. Sessions persist across deployments using credential-keyed
+  token hashes; password changes invalidate them. Login/logout do not enable data
+  or launch mutation.
 - Logical JSONL backup/restore preserves evidence IDs and timestamps, uses a
   consistent snapshot and checksum/count manifest, rejects corrupt exports and
   restores only into an empty database. SQLite round-trip and immutability tests
-  pass; real hosted PostgreSQL restore and scheduled off-host backups remain pending.
+  pass. A real local snapshot exported and restored 1,951 tokens, 34,823 decisions,
+  5,469 observations and 17,979 labels with matching manifest counts. Hosted
+  PostgreSQL recovery and scheduled off-host backups remain pending.
 - Independent finalized RPC mint probe returned SPL token program and authority
   evidence. Largest accounts were unavailable, explicitly preserved as missing.
   Six behavioral RPC/security tests plus query projection/cohort tests cover

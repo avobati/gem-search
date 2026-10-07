@@ -37,7 +37,7 @@ def public_health(store):
 
 
 def handler_for(store, credentials):
-    sessions = Sessions()
+    sessions = Sessions(store,credentials)
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass

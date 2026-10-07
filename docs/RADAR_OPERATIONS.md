@@ -49,7 +49,9 @@ See [Railway IaC documentation](https://docs.railway.com/infrastructure-as-code)
 
 Sign in at `/login`. Passwords remain in the host environment; opaque sessions
 last eight hours, use HttpOnly/SameSite=Strict/Secure cookies on public domains,
-and expire when the single replica restarts. Login challenges expire after ten
+and persist across replica restarts. Only credential-keyed hashes and expiration
+times are stored in PostgreSQL; changing the dashboard password invalidates
+previous sessions. Login challenges expire after ten
 minutes and are single-use; POST login/logout require a same-origin request.
 Thirty failed sign-ins in five minutes temporarily stop sign-ins. Login cookies
 do not carry credentials. Basic Authorization remains available to API clients.

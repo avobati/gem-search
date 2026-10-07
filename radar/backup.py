@@ -69,11 +69,18 @@ def restore(store, source):
             if db.execute(f'SELECT 1 FROM {table} LIMIT 1').fetchone():
                 raise ValueError('Restore requires an empty evidence database')
         with Path(source).open(encoding='utf-8') as data:
-            next(data)
+            digest=hashlib.sha256()
+            digest.update(next(data).encode())
+            imported={table:0 for table in ENTITIES}
+            manifest=None
             for line in data:
                 record=json.loads(line)
                 if 'manifest' in record:
+                    manifest=record['manifest']
+                    if data.read():
+                        raise ValueError('Data follows the backup manifest')
                     break
+                digest.update(line.encode())
                 table,row=record['table'],record['row']
                 if table not in ENTITIES:
                     raise ValueError('Invalid backup entity')
@@ -81,6 +88,9 @@ def restore(store, source):
                     db.execute('INSERT INTO tokens VALUES (?,?,?)',(row['mint'],row['first_seen'],row['payload']))
                 else:
                     db.execute(f'INSERT INTO {table} VALUES (?,?,?,?)',(row['id'],row['mint'],row['available_at'],row['payload']))
+                imported[table]+=1
+            if not manifest or manifest.get('sha256')!=digest.hexdigest() or manifest.get('counts')!=imported or imported!=counts:
+                raise ValueError('Backup changed during restore')
         # Operational caches/secrets are excluded. Restore only the latest cohort
         # pointer, so stored decisions are inspectable before collection resumes.
         row=db.execute('SELECT payload FROM decisions ORDER BY available_at DESC LIMIT 1').fetchone()

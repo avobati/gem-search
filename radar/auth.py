@@ -1,5 +1,7 @@
 """Small private-dashboard sessions; no wallet or provider credentials in cookies."""
 from http.cookies import SimpleCookie, CookieError
+import hashlib
+import hmac
 import secrets
 import threading
 import time
@@ -14,10 +16,14 @@ def cookies(header):
 
 
 class Sessions:
-    def __init__(self):
+    def __init__(self, store=None, secret=''):
         self.lock = threading.Lock()
         self.sessions, self.challenges = {}, {}
         self.failures = []
+        self.store, self.secret = store, secret
+
+    def key(self, token):
+        return 'auth-session:'+hmac.new(self.secret.encode(),token.encode(),hashlib.sha256).hexdigest()
 
     def prune(self):
         now = time.time()
@@ -37,6 +43,9 @@ class Sessions:
     def valid(self, token):
         with self.lock:
             self.prune()
+            if self.store and token:
+                value=self.store.status(self.key(token)).get(self.key(token),{})
+                return value.get('expires',0)>time.time()
             return bool(token and token in self.sessions)
 
     def login(self, nonce, supplied, expected):
@@ -54,8 +63,13 @@ class Sessions:
                 return None, 'limited'
             token = secrets.token_urlsafe(32)
             self.sessions[token] = time.time()+8*3600
+            if self.store:
+                self.store.set_status(self.key(token),{'expires':self.sessions[token]})
             return token, 'ok'
 
     def logout(self, token):
         with self.lock:
             self.sessions.pop(token,None)
+            if self.store and token:
+                with self.store.connect() as db:
+                    db.execute('DELETE FROM operational WHERE key=?',(self.key(token),))
