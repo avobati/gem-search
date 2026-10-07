@@ -96,7 +96,7 @@ def handler_for(store, credentials):
                 if path == '/api/health':
                     state = public_health(store)
                     worker = state.get('worker', {})
-                    ready = time.time()-worker.get('last_completed',0)<900 and any(v.get('healthy') and time.time()-v['updated']<900 for k,v in state.items() if k.startswith('provider:'))
+                    ready = worker.get('state')!='failed' and time.time()-(worker.get('last_completed') or 0)<900 and any(v.get('healthy') and time.time()-v['updated']<900 for k,v in state.items() if k.startswith('provider:'))
                     return self.send(200 if ready else 503, {'ready':ready, 'worker':worker})
                 files = {'/':('index.html','text/html; charset=utf-8'), '/radar.js':('radar.js','text/javascript; charset=utf-8'), '/radar.css':('radar.css','text/css; charset=utf-8')}
                 if path in files:

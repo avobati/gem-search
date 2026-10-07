@@ -34,7 +34,9 @@ class Worker:
         with self.store.worker_lock() as acquired:
             if not acquired:
                 return False
-            self.store.set_status('worker', {'state': 'running', 'last_started': time.time()})
+            previous = self.store.status('worker').get('worker', {})
+            self.store.set_status('worker', {'state': 'running', 'last_started': time.time(),
+                                           'last_completed': previous.get('last_completed')})
             discovered, observations, errors = self.providers.discover()
             for mint, identity in discovered.items():
                 self.store.discover(mint, identity)
