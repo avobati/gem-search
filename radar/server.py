@@ -51,7 +51,9 @@ def handler_for(store, credentials):
             self.send_header('Cache-Control', 'no-store')
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
-            self.send_header('Referrer-Policy', 'no-referrer')
+            # no-referrer turns native form POST Origin into null in browsers.
+            # Preserve same-origin form validation without sending cross-site referrers.
+            self.send_header('Referrer-Policy', 'same-origin')
             for key,value in (headers or {}).items():
                 self.send_header(key,value)
             self.end_headers()

@@ -58,6 +58,7 @@ class SessionTests(unittest.TestCase):
                 con.request('GET','/login')
                 response=con.getresponse()
                 nonce_cookie=response.getheader('Set-Cookie')
+                self.assertEqual(response.getheader('Referrer-Policy'),'same-origin')
                 page=response.read().decode()
                 nonce=re.search(r'name="nonce" value="([^"]+)"',page).group(1)
                 self.assertIn('HttpOnly',nonce_cookie)
@@ -78,6 +79,11 @@ class SessionTests(unittest.TestCase):
                 nonce=re.search(r'name="nonce" value="([^"]+)"',page).group(1)
                 body=urlencode({'username':'avobati','password':'private-password-test','nonce':nonce})
                 headers={'Cookie':nonce_cookie.split(';')[0],'Content-Type':'application/x-www-form-urlencoded','Origin':'https://evil.example'}
+                con.request('POST','/login',body,headers)
+                response=con.getresponse()
+                self.assertEqual(response.status,403)
+                response.read()
+                headers['Origin']='null'
                 con.request('POST','/login',body,headers)
                 response=con.getresponse()
                 self.assertEqual(response.status,403)
