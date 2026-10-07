@@ -5,7 +5,7 @@ has **not** met all acceptance criteria.
 
 ## Observed validation
 
-- 55 Python tests pass (existing workbench plus radar).
+- 56 Python tests pass (existing workbench plus radar).
 - 18 JavaScript tests pass; radar JavaScript syntax check passes.
 - Live first two collection cycles discovered 59 distinct mints: 36 first seen
   through GeckoTerminal new pools and 23 through DexScreener profiles.

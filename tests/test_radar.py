@@ -165,9 +165,36 @@ class RadarTests(unittest.TestCase):
             con.request('GET','/api/radar',headers={'Authorization':auth});r=con.getresponse();body=r.read();self.assertEqual(r.status,200)
             self.assertNotIn(b'password',body)
             con.request('POST','/api/launches',body='{}',headers={'Authorization':auth});r=con.getresponse();self.assertEqual(r.status,405);r.read()
+            self.store.set_status('worker',{'state':'running','last_completed':time.time()-30})
+            self.store.set_status('provider:dex',{'healthy':True})
+            con.request('GET','/api/health',headers={'Authorization':auth});r=con.getresponse();self.assertEqual(r.status,200);r.read()
+            self.store.set_status('worker',{'state':'running','last_completed':None})
+            con.request('GET','/api/health',headers={'Authorization':auth});r=con.getresponse();self.assertEqual(r.status,503);r.read()
             con.close()
         finally:
             server.shutdown();server.server_close();thread.join()
+
+    def test_complete_worker_cycle_persists_risk_and_frozen_cohort(self):
+        from radar.worker import Worker
+        store=self.store
+        class FixtureProviders:
+            def discover(self):
+                return {MINT:{'source':'test','name':'Test'}},[],[]
+            def markets(self,mint):
+                return [self_outer.observation(time.time())],[]
+            def risk(self,mint):
+                return {'observed_at':time.time(),'source_url':'https://example.com/risk',
+                        'raw':{'token':{'mintAuthority':None,'freezeAuthority':None},'topHolders':[{'pct':1}]}}
+        self_outer=self
+        with patch.dict('os.environ',{'GROK_ENABLED':'0','TELEGRAM_ALERTS_ENABLED':'0'}):
+            worker=Worker(store,FixtureProviders(),lambda *a,**k:{'pages':[],'social':{},'crawled':False})
+            self.assertTrue(worker.cycle())
+        decisions=store.history('decisions',MINT)
+        self.assertEqual(len(decisions),1)
+        self.assertEqual(decisions[0]['risk_evidence']['raw']['token']['mintAuthority'],None)
+        self.assertEqual(set(decisions[0]['ranks']),{'gem','random','volume','liquidity','momentum','gainer'})
+        self.assertFalse(decisions[0]['score']['candidate'])
+        self.assertEqual(store.status('worker')['worker']['state'],'idle')
 
 
 if __name__=='__main__':
